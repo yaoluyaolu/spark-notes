@@ -1259,6 +1259,31 @@ select {
   color: var(--accent-deep);
 }
 
+/* 口令不一致的告警。必须显眼 —— 它决定「内容看不看得见」，
+   缩成一行小字等于没提示。 */
+.sync-warn {
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.75;
+  color: var(--ink);
+  background: var(--clay-soft);
+  border: 1px solid #E6C6B6;
+  border-radius: var(--radius);
+}
+.sync-warn b { color: var(--clay); font-weight: 600; }
+.sync-inline-btn {
+  margin-left: 6px;
+  padding: 1px 9px;
+  font: inherit;
+  font-size: 11.5px;
+  color: var(--ink-2);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.sync-inline-btn:hover { color: var(--clay); border-color: #E6C6B6; }
+
 .sync-link {
   display: flex;
   flex-direction: column;
@@ -2871,7 +2896,7 @@ select {
   /* ===========================================================
      状态与订阅
      =========================================================== */
-  var state = { phase: 'off', text: '未启用同步', at: 0, broken: 0, error: '' };
+  var state = { phase: 'off', text: '未启用同步', at: 0, broken: 0, healed: 0, dangling: 0, brokenList: [], error: '' };
   var listeners = [];
 
   function setState(patch) {
@@ -3060,15 +3085,25 @@ select {
        远端墓碑、本地没有       → 本机从未见过，忽略；
                                 但若本地已彻底清理过它，顺手把远端那行也删掉
      =========================================================== */
-  function reconcile(local, remote) {
+  function reconcile(local, remote, brokenDocs) {
     var localMap = {}, remoteMap = {};
     (local || []).forEach(function (r) { localMap[r.kind + ':' + r.item.id] = r; });
     (remote || []).forEach(function (r) { remoteMap[r.doc] = r; });
 
-    var toApply = [], toPush = [], toDrop = [];
+    /* 解不开的远端行要当成「远端根本没有这一条」，而不是「版本相同、无需处理」。
+       区别是决定性的：当成「相同」的话，本机那份永远不会被重新推上去，
+       云端那行就永远锁着 —— 症状是「这条内容本机看得见，另一台设备永远看不到」，
+       而且两边都不报错，只报「解不开」。当成「没有」，本机版本就会用当前口令
+       重新加密推上去，把那条读不了的旧密文覆盖掉，两边自动恢复一致。 */
+    var brokenSet = {};
+    (brokenDocs || []).forEach(function (d) { brokenSet[d] = true; });
+
+    var toApply = [], toPush = [], toDrop = [], healed = [];
 
     Object.keys(localMap).forEach(function (doc) {
       var l = localMap[doc];
+      if (brokenSet[doc]) { toPush.push(l); healed.push(doc); return; }
+
       var r = remoteMap[doc];
       if (!r) { toPush.push(l); return; }
 
@@ -3106,7 +3141,11 @@ select {
       toApply.push({ kind: r.kind, item: r.item });
     });
 
-    return { toApply: toApply, toPush: toPush, toDrop: toDrop };
+    /* 解不开、且本机也没有那份 —— 本机帮不上忙，只能如实报告，
+       得等「手里有这条内容的那台设备」用正确口令重新推上来。 */
+    var dangling = (brokenDocs || []).filter(function (d) { return !localMap[d]; });
+
+    return { toApply: toApply, toPush: toPush, toDrop: toDrop, healed: healed, dangling: dangling };
   }
 
   /* ===========================================================
@@ -3180,7 +3219,7 @@ select {
       })
       .then(function (rows) { return openAll(rows, key); })
       .then(function (remote) {
-        var plan = reconcile(DB.dumpForSync(), remote.rows);
+        var plan = reconcile(DB.dumpForSync(), remote.rows, remote.broken);
         var applied = DB.applyRemote(plan.toApply);
 
         return pushRows(token, plan.toPush, key)
@@ -3190,10 +3229,17 @@ select {
             setState({
               phase: 'ok', text: '已同步', at: Date.now(), error: '',
               broken: remote.broken.length,
+              healed: plan.healed.length,
+              dangling: plan.dangling.length,
+              brokenList: remote.broken,
               pulled: plan.toApply.length, pushed: pushed,
               lastApplied: applied
             });
-            return { applied: applied, pushed: pushed, broken: remote.broken.length, dropped: plan.toDrop.length };
+            return {
+              applied: applied, pushed: pushed, broken: remote.broken.length,
+              healed: plan.healed.length, dangling: plan.dangling.length,
+              dropped: plan.toDrop.length
+            };
           });
       })
       .catch(function (err) {
@@ -3246,7 +3292,25 @@ select {
   function disconnect() {
     stopAuto();
     signOut();
-    setState({ phase: 'off', text: '未启用同步', at: 0, error: '', broken: 0 });
+    setState({ phase: 'off', text: '未启用同步', at: 0, error: '',
+      broken: 0, healed: 0, dangling: 0, brokenList: [] });
+  }
+
+  /* 清掉「谁都读不了」的云端行。
+     只在「本机手里也没有这份内容」时才该用：手上有的话，下一轮同步会自动
+     用当前口令把它重新推上去，根本不用删。删掉也不伤数据 —— 手里有那条
+     内容的设备下次同步会自己把它补回云端。 */
+  function forgetBroken(docs) {
+    var list = docs || state.brokenList || [];
+    if (!list.length) return Promise.resolve(0);
+    if (!connected()) return Promise.reject(new Error('尚未登录'));
+    return ensureToken().then(function (tk) {
+      return dropRows(tk, list).then(function (n) {
+        var left = (state.brokenList || []).filter(function (d) { return list.indexOf(d) < 0; });
+        setState({ broken: left.length, dangling: 0, brokenList: left });
+        return n;
+      });
+    });
   }
 
   global.Sync = {
@@ -3257,7 +3321,7 @@ select {
     seal: seal, open: open, openAll: openAll,
     reconcile: reconcile,
     syncNow: syncNow, setAuto: setAuto, startAuto: startAuto, stopAuto: stopAuto,
-    onLocalChange: onLocalChange, disconnect: disconnect,
+    onLocalChange: onLocalChange, disconnect: disconnect, forgetBroken: forgetBroken,
     onChange: onChange, getState: getState, refreshIdleState: refreshIdleState,
     TABLE: TABLE, META: META
   };
@@ -5322,7 +5386,29 @@ select {
     if (st.phase === 'busy') return '正在同步…';
     if (st.phase === 'error') return '同步出错';
     if (!st.at) return '本地保存 · 已连接';
+    if (st.broken) return '已同步 · ' + st.broken + ' 条读不了';
     return '已同步 · ' + when(st.at);
+  }
+
+  /* 口令不一致时，界面必须把话说完整。
+     这是最隐蔽的一类故障：同步照常跑、不报错，只是「内容看不见」——
+     用户看到一句「3 条解不开」根本无从下手，只能来问。 */
+  function syncWarnHTML(st) {
+    if (!st.broken) return '';
+    var h = '<b>有 ' + st.broken + ' 条云端内容读不了。</b>' +
+      '多半不是数据坏了，而是<b>两台设备算出的密钥不一样</b> —— ' +
+      '最常把「登录密码」填进了「同步口令」那栏。';
+    h += '<br>两台设备都打开「同步」面板，看下面那一行 <span class="sync-fp">key …</span> 的指纹：' +
+      '<b>两台必须一样</b>。不一样的那台，把同步口令改成正确值，再点一次「登录并启用」。';
+    if (st.healed) {
+      h += '<br>本机手里也有其中 ' + st.healed + ' 条，已用本机版本重新加密上传，另一台拉一次就能看见。';
+    }
+    if (st.dangling) {
+      h += '<br>另有 ' + st.dangling + ' 条本机没有。它们要等「手里有这条内容的那台设备」' +
+        '用正确口令同步一次才会恢复。' +
+        '<button class="sync-inline-btn" id="syncForget" type="button">清掉这 ' + st.dangling + ' 条</button>';
+    }
+    return h;
   }
 
   function syncDetailText(st) {
@@ -5331,10 +5417,14 @@ select {
     if (st.phase === 'busy') return '正在与云端对账…';
     if (st.phase === 'error') return st.error || '同步失败';
     if (!st.at) return '点「立即同步」跑第一轮';
+    if (st.broken) {
+      var s = '有 ' + st.broken + ' 条读不了（多为两台设备口令不一致）';
+      if (st.healed) s += '，已重新推上去 ' + st.healed + ' 条';
+      return s;
+    }
     var parts = ['上次 ' + when(st.at)];
     if (st.pushed) parts.push('上传 ' + st.pushed);
     if (st.pulled) parts.push('接收 ' + st.pulled);
-    if (st.broken) parts.push(st.broken + ' 条解不开');
     return parts.join(' · ');
   }
 
@@ -5456,6 +5546,9 @@ select {
       (Sync.configured() ? '<span>· key <span class="sync-fp" id="syncFpVal">…</span></span>' : '') +
       '</div>';
 
+    /* 口令不一致的告警挂在这里，内容由 updateSyncUI 填 */
+    html += '<div class="sync-warn" id="syncWarn" hidden></div>';
+
     html += '<details class="sync-more"><summary>还没建过表？展开看建表语句</summary>' +
       '<pre class="sync-sql">' + esc(SYNC_SQL) + '</pre></details>';
 
@@ -5566,6 +5659,16 @@ select {
     if (!f.email || !f.loginPass) { toast('填上邮箱和登录密码', 'warn'); return; }
     if (!Vault.available()) { toast('当前环境不支持加密，需要用 https 打开', 'warn'); return; }
 
+    /* 「同步口令」和「登录密码」填成同一个，是「这台设备写的内容另一台永远读不了」
+       的头号成因 —— 两者都是差不多的随机串，两个密码框还挨着。先拦一下。 */
+    if (f.pass === f.loginPass) {
+      if (!confirm('注意：「同步口令」和「登录密码」填成了同一个。\n\n' +
+        '· 同步口令用来加密内容，两台设备必须完全一致\n' +
+        '· 登录密码只用于登录后端，跟加密无关\n\n' +
+        '如果另一台设备填的不是这个口令，你在这台设备上写的内容，另一台永远读不出来。\n\n' +
+        '确定就这样继续吗？')) return;
+    }
+
     toast('正在登录…');
     Sync.signIn(f.email, f.loginPass)
       .catch(function (err) {
@@ -5635,6 +5738,33 @@ select {
 
     var detail = $('#syncDetail');
     if (detail) detail.textContent = syncDetailText(st);
+
+    /* 告警块：内容没变就不重绘，不然每 30 秒一轮自动同步都会把
+       已经展开的面板搅一遍、还会丢掉按钮上的监听。 */
+    var warn = $('#syncWarn');
+    if (warn) {
+      var html = syncWarnHTML(st);
+      if (warn.getAttribute('data-sig') !== html) {
+        warn.setAttribute('data-sig', html);
+        warn.innerHTML = html;
+        warn.hidden = !html;
+        var fb = $('#syncForget');
+        if (fb) fb.addEventListener('click', function () {
+          var n = (Sync.getState().brokenList || []).length;
+          if (!confirm('清掉这 ' + n + ' 条读不了的云端内容？\n\n' +
+            '它们在本机没有副本，任何设备都解不开，所以删掉不影响你现有的笔记。\n' +
+            '手里有这条内容的那台设备，下次用正确口令同步时会自动补回来。')) return;
+          Sync.forgetBroken().then(function (k) {
+            toast('已清掉 ' + k + ' 条', 'good');
+            updateSyncUI();
+          }).catch(function (e) {
+            toast('清理失败：' + (e && e.message || e), 'warn');
+          });
+        });
+      } else {
+        warn.hidden = !html;
+      }
+    }
   }
 
   /* ===========================================================
