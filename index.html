@@ -3074,16 +3074,20 @@ select {
 
       /* 出厂示例内容（带 demo 标记）特殊处理。
          它的 ID 是写死的，所以每台设备第一次打开都会自带一份，而时间戳是「刚刚」——
-         比用户在另一台设备上的任何改动都新。若放任 LWW 裁决，新设备一上线就会
-         把云端那份盖掉，症状有两个：删掉的示例自己长回来、改过的示例退回原文。
-         所以只要本机这份还「原封未动」（rev 仍是 1、也没被删），一律以云端为准 ——
-         删除与修改都按云端的结果落到本机。
-         若本机这份已被用户动过（rev > 1），说明用户真有意图，才回到常规比较。 */
-      if (l.item.demo && (+l.item.rev || 1) <= 1 && !l.item.deletedAt) {
-        /* 仅当两边确实不同才落，否则每一轮同步都会空转一次写入 */
-        if (DB.compareVersion(l.item, r.item) !== 0 || (+l.item.deletedAt || 0) !== (+r.item.deletedAt || 0)) {
-          toApply.push({ kind: r.kind, item: r.item });
-          return;
+         比用户在另一台设备上的任何改动都新。若放任 LWW 裁决，先上线的那台
+         会把「出厂默认」当成更权威的版本，症状有两个：删掉的示例自己长回来、
+         改过的示例退回原文（哪台先同步，症状就在哪一边）。
+
+         所以这里不看时间，只看「谁被人动过」：
+           一方原封未动、另一方被用户改过或删过 → 被人动过的那份永远胜出。
+         两边都动过或都没动过，才回到常规 LWW。
+         判别依据是 rev：出厂示例落库时是 1，用户改一次就 ≥2；删除也会 bump。 */
+      if (l.item.demo && r.item.demo) {
+        var lTouched = (+l.item.rev || 1) > 1 || !!l.item.deletedAt;
+        var rTouched = (+r.item.rev || 1) > 1 || !!r.item.deletedAt;
+        if (lTouched !== rTouched) {
+          if (!lTouched) { toApply.push({ kind: r.kind, item: r.item }); return; }
+          toPush.push(l); return;
         }
       }
 
