@@ -5437,9 +5437,14 @@ select {
   }
 
   function syncField(label, id, val, type, ph) {
+    /* 密码框一律用 new-password：浏览器会把挨着的两个密码输入框当成一个「登录表单」，
+       拿已保存的登录密码把两个都填上 —— 而「同步口令」正好挨着「登录密码」。
+       这正是「两台设备口令不一致」的头号成因，得从根上堵。
+       （纯 autocomplete="off" 对密码框经常无效，Chrome 会直接忽略。） */
+    var ac = type === 'password' ? 'new-password' : 'off';
     return '<div class="sync-field"><label for="' + id + '">' + esc(label) + '</label>' +
       '<input id="' + id + '" type="' + type + '" value="' + esc(val || '') + '"' +
-      ' placeholder="' + esc(ph || '') + '" autocomplete="off" spellcheck="false"></div>';
+      ' placeholder="' + esc(ph || '') + '" autocomplete="' + ac + '" spellcheck="false"></div>';
   }
 
   /* ---------- 配置链接 ----------
