@@ -259,6 +259,13 @@ svg.ico {
 }
 .tabs::-webkit-scrollbar { display: none; }
 
+.tabs-main {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
 .tab {
   font: inherit;
   font-size: 13px;
@@ -345,9 +352,28 @@ select {
 .pane-head {
   padding: 20px 22px 12px;
   flex: 0 0 auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+/* 标题块要能收缩，否则长副标题会把右侧动作挤出容器 */
+.pane-head-text { flex: 1 1 auto; min-width: 0; }
+
+/* 本视图的动作区。摆在标题右侧而不是列表底部 —— 手机上底部往往要滚很久才到。 */
+.pane-acts {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 .pane-title { font-size: 15px; font-weight: 600; margin: 0; letter-spacing: 0.02em; }
 .pane-sub { font-size: 12px; color: var(--ink-3); margin: 3px 0 0; }
+
+/* 抽屉的关闭按钮、以及只在窄屏出现的按钮：宽屏下右侧面板本来就在旁边，
+   这两个入口没有意义，直接不占位置。 */
+.pane-close, .act-narrow { display: none; }
 
 .pane-body {
   flex: 1 1 auto;
@@ -1151,6 +1177,8 @@ select {
 
 @media (max-width: 980px) {
   .workspace { grid-template-columns: minmax(0, 1fr); }
+  /* 窄屏放不下两栏：右侧面板收起为抽屉，由标题栏的「列表」按钮打开。
+     抽屉是全屏的，所以不需要遮罩层，关掉它的入口就在它自己的标题栏里。 */
   .pane-secondary { display: none; }
   .workspace.show-secondary .pane-secondary {
     display: flex;
@@ -1158,21 +1186,91 @@ select {
     inset: 0;
     z-index: 50;
     border-left: 0;
+    background: var(--paper);
+    animation: rise 0.18s var(--ease);
   }
+  /* 抽屉里必须能自救：一直加着 show-secondary 而无处可关，会把界面锁死 */
+  .pane-close, .act-narrow { display: inline-flex; }
+
   .topbar { flex-wrap: wrap; gap: 10px; padding: 12px 16px; }
   .topbar-search { order: 3; max-width: none; flex-basis: 100%; }
   .hint-key { display: none; }
-  .tabs-tail { padding-left: 8px; }
+
+  /* 页签与筛选各占一行，各自横向滚动：否则筛选会被挤到屏幕外，
+     要横向划很久才摸得到，等于没有。 */
+  .tabs {
+    flex-wrap: wrap;
+    padding: 0 8px;
+    row-gap: 2px;
+    overflow: visible;
+  }
+  .tabs-main {
+    flex: 1 1 100%;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .tabs-main::-webkit-scrollbar { display: none; }
+  .tabs-tail {
+    flex: 1 1 100%;
+    min-width: 0;
+    margin-left: 0;
+    padding: 0 0 8px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .tabs-tail::-webkit-scrollbar { display: none; }
+
   .compose-meta { grid-template-columns: 1fr; }
   .data-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .pane-head { padding: 16px 16px 10px; }
+  /* 窄屏把标题与动作拆成上下两行：挤在一行时副标题只剩百来像素宽，
+     会被折成四五行的窄条，反而更占地方。 */
+  .pane-head { padding: 16px 16px 10px; flex-wrap: wrap; row-gap: 8px; }
+  .pane-head-text { flex: 1 1 100%; }
+  .pane-acts { flex: 1 1 100%; justify-content: flex-start; }
+  /* 抽屉的标题栏例外：关闭按钮要留在右上角，和标题同一行 */
+  .pane-secondary .pane-head { flex-wrap: nowrap; }
+  .pane-secondary .pane-head-text { flex: 1 1 auto; }
+  .pane-secondary .pane-acts { flex: 0 0 auto; justify-content: flex-end; }
   .pane-body { padding: 0 16px 24px; }
+  /* 动作区在窄屏收敛一点，一行容得下「新建主题 + 新建文章 + 主题列表」 */
+  .pane-acts .btn { font-size: 12px; padding: 6px 9px; }
 }
 
 @media (max-width: 560px) {
   .btn span { display: none; }
   .btn-primary span { display: inline; }
+  /* 但主区的动作区必须留字：图标+加号看不出是「新建主题」还是「新建文章」，
+     而这两个入口正是手机上最需要一眼看见的东西。 */
+  .pane-acts .btn span { display: inline; }
   .pane-title { font-size: 14px; }
+  /* 键盘快捷键提示在手机上只是噪音 */
+  .statusbar .mini-key, .statusbar .key-label { display: none; }
+}
+
+/* 手机上把弹层做成贴底的抽屉：全宽、贴底，主要按钮落在拇指够得到的地方 */
+@media (max-width: 620px) {
+  .sheet-mask { padding: 0; align-items: flex-end; }
+  .sheet, .sheet-wide {
+    width: 100%;
+    max-height: calc(100vh - 28px);
+    max-height: calc(100dvh - 28px);
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+    border-bottom: 0;
+  }
+  .sheet-foot {
+    padding-bottom: calc(12px + env(safe-area-inset-bottom));
+    flex-wrap: wrap;
+  }
+  /* 底部那行提示与按钮挤在一行时会被压成省略号，不如让它单独占一行 */
+  .foot-hint { flex: 1 1 100%; white-space: normal; }
+  .edit-body { padding: 14px 16px 18px; }
+}
+
+/* 手机上更靠得住的点击区：碎片的动作按钮加一点高度 */
+@media (hover: none) and (max-width: 980px) {
+  .frag-actions .btn-sm { padding: 7px 11px; }
+  .pane-acts .btn { padding: 7px 10px; }
 }
 
 /* ---------- 多设备同步 ---------- */
@@ -1359,11 +1457,14 @@ select {
     </div>
   </header>
 
-  <nav class="tabs" id="tabs" role="tablist">
-    <button class="tab is-active" data-view="inbox" role="tab">收件箱 <span class="tab-count" data-count="loose"></span></button>
-    <button class="tab" data-view="cards" role="tab">知识卡片 <span class="tab-count" data-count="cards"></span></button>
-    <button class="tab" data-view="topics" role="tab">主题 <span class="tab-count" data-count="topics"></span></button>
-    <button class="tab" data-view="articles" role="tab">文章 <span class="tab-count" data-count="articles"></span></button>
+  <nav class="tabs" id="tabs">
+    <!-- 页签与筛选分两段：窄屏时各自成行，筛选就不必横向滚很远才摸得到 -->
+    <div class="tabs-main" role="tablist">
+      <button class="tab is-active" data-view="inbox" role="tab">灵感碎片 <span class="tab-count" data-count="loose"></span></button>
+      <button class="tab" data-view="cards" role="tab">知识卡片 <span class="tab-count" data-count="cards"></span></button>
+      <button class="tab" data-view="topics" role="tab">主题 <span class="tab-count" data-count="topics"></span></button>
+      <button class="tab" data-view="articles" role="tab">文章 <span class="tab-count" data-count="articles"></span></button>
+    </div>
     <div class="tabs-tail">
       <button class="chip is-on" data-filter="all" type="button">全部</button>
       <button class="chip" data-filter="recent" type="button">近 7 天</button>
@@ -1383,16 +1484,27 @@ select {
 
     <section class="pane pane-primary">
       <div class="pane-head">
-        <h2 class="pane-title" id="primaryTitle">收件箱</h2>
-        <p class="pane-sub" id="primarySub">未归类的灵感会留在这里，随时可以聚合</p>
+        <div class="pane-head-text">
+          <h2 class="pane-title" id="primaryTitle">灵感碎片</h2>
+          <p class="pane-sub" id="primarySub">未归类的心得会留在这里，可以聚合成卡片，也可以直接写成文章</p>
+        </div>
+        <!-- 本视图能做的事都摆在这儿。手机上右侧面板是抽屉，创建入口只能靠这里。 -->
+        <div class="pane-acts" id="primaryActions"></div>
       </div>
       <div class="pane-body" id="primaryList"></div>
     </section>
 
     <section class="pane pane-secondary">
       <div class="pane-head">
-        <h2 class="pane-title" id="secondaryTitle">主题脉络</h2>
-        <p class="pane-sub" id="secondarySub">灵感按主题自动聚拢</p>
+        <div class="pane-head-text">
+          <h2 class="pane-title" id="secondaryTitle">主题脉络</h2>
+          <p class="pane-sub" id="secondarySub">灵感按主题自动聚拢</p>
+        </div>
+        <div class="pane-acts">
+          <button class="icon-btn pane-close" id="secondaryClose" type="button" aria-label="收起列表" title="收起列表">
+            <svg class="ico" viewBox="0 0 16 16"><path d="M4 4 L12 12 M12 4 L4 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          </button>
+        </div>
       </div>
       <div class="pane-body" id="secondaryList"></div>
     </section>
@@ -3425,6 +3537,39 @@ select {
     if (right != null) $('#statusRight').textContent = right;
   }
 
+  /* ---------- 窄屏抽屉 ----------
+     宽屏是「左内容 + 右索引」两栏；手机放不下，右栏收成抽屉。
+     断点必须与 styles.css 里那条 980px 一致，否则会出现
+     「JS 以为能开、CSS 却不认」的空点击。
+     开关类必须加在 .workspace 上 —— CSS 写的是
+     `.workspace.show-secondary .pane-secondary`。
+     （此前加在 #app 上，选择器根本匹配不到，抽屉从来没真正打开过。） */
+  function drawerHost() { return $('.workspace') || $('#app'); }
+  function isNarrow() { return global.innerWidth <= 980; }
+  function drawerOpen() {
+    var host = drawerHost();
+    return !!host && host.classList.contains('show-secondary');
+  }
+  function openDrawer() {
+    if (!isNarrow()) return false;
+    drawerHost().classList.add('show-secondary');
+    var body = $('#secondaryList');
+    if (body) body.scrollTop = 0;
+    syncDrawerToggle();
+    return true;
+  }
+  /* 必须能随时关掉：只加不减会把整个界面锁死在抽屉里 */
+  function closeDrawer() {
+    if (!drawerOpen()) return false;
+    drawerHost().classList.remove('show-secondary');
+    syncDrawerToggle();
+    return true;
+  }
+  function syncDrawerToggle() {
+    var b = $('#primaryActions [data-act="paneToggle"]');
+    if (b) b.setAttribute('aria-expanded', drawerOpen() ? 'true' : 'false');
+  }
+
   /* ===========================================================
      渲染 · 计数与页签
      =========================================================== */
@@ -3466,7 +3611,7 @@ select {
     if (S.view === 'inbox') {
       arr = arr.filter(function (f) { return !(f.topicIds || []).length; });
       if (S.filter === 'all') {
-        // 收件箱默认只显示未归类；但「全部」「星标」「近7天」时仍限未归类
+        // 灵感碎片默认只显示未归类；但「全部」「星标」「近7天」时仍限未归类
       }
     } else if (S.activeTopicId) {
       arr = arr.filter(function (f) { return (f.topicIds || []).indexOf(S.activeTopicId) >= 0; });
@@ -3533,6 +3678,8 @@ select {
       links +
       '<div class="frag-actions">' +
         '<button class="btn btn-sm btn-ghost" data-act="card" data-id="' + f.id + '">聚合为卡片</button>' +
+        /* 不经过卡片也能成文：碎片本身就是成篇的原料 */
+        '<button class="btn btn-sm btn-ghost" data-act="articleFromFrag" data-id="' + f.id + '">写成文章</button>' +
         '<button class="btn btn-sm btn-ghost" data-act="edit" data-id="' + f.id + '">编辑</button>' +
         '<button class="btn btn-sm btn-ghost" data-act="star" data-id="' + f.id + '">' + (f.star ? '取消星标' : '星标') + '</button>' +
         '<button class="btn btn-sm btn-ghost" data-act="copy" data-id="' + f.id + '">复制</button>' +
@@ -3577,21 +3724,36 @@ select {
   }
 
   function emptyHTML() {
+    var btnNew = function (act, text) {
+      return '<button class="btn btn-ghost" style="margin-top:14px" data-act="' + act + '">' + text + '</button>';
+    };
     var msgs = {
-      inbox: ['收件箱是空的', '所有灵感都已归入主题。新的念头随时写下来。'],
-      topics: ['还没有选定主题', '在右侧选择一个主题，打开它的整理台。'],
+      inbox: ['这里还没有灵感碎片', '随手记下的念头会留在这里，可以聚合成卡片，也可以直接写成文章。'],
+      topics: ['还没有选定主题', '打开列表挑一个主题，进入它的整理台。'],
       cards: ['还没有知识卡片', '可以直接写一张，也可以在灵感上点「聚合为卡片」。'],
-      articles: ['还没有文章', '把几张相关的卡片组织起来，就成了一篇文章。']
+      articles: ['还没有文章', '把灵感或卡片组织起来，就成了一篇文章。']
     };
     var m = msgs[S.view] || ['这里还是空的', '开始记录第一条灵感吧。'];
-    if (S.query) m = ['没有匹配「' + S.query + '」的内容', '换个关键词试试，或清空搜索。'];
-    var btn = S.query
-      ? '<button class="btn btn-ghost" style="margin-top:14px" data-act="clearSearch">清空搜索</button>'
-      : S.view === 'cards'
-        ? '<button class="btn btn-ghost" style="margin-top:14px" data-act="newCard">＋ 新建卡片</button>'
-        : S.view === 'articles'
-          ? '<button class="btn btn-ghost" style="margin-top:14px" data-act="composeNow">去记一条灵感</button>'
-          : '<button class="btn btn-ghost" style="margin-top:14px" data-act="composeNow">记下第一条灵感</button>';
+    var btn;
+
+    if (S.query) {
+      m = ['没有匹配「' + S.query + '」的内容', '换个关键词试试，或清空搜索。'];
+      btn = btnNew('clearSearch', '清空搜索');
+    } else if (S.view === 'topics' && !DB.list('topic').length) {
+      m = ['还没有主题', '主题是你亲手整理的桌子。新建一个，再把灵感和卡片挑进去。'];
+      btn = btnNew('newTopic', '＋ 新建主题');
+    } else if (S.view === 'topics') {
+      btn = btnNew('newTopic', '＋ 新建主题');
+    } else if (S.view === 'cards') {
+      btn = btnNew('newCard', '＋ 新建卡片');
+    } else if (S.view === 'articles') {
+      btn = btnNew('newArticle', '＋ 新建文章');
+    } else {
+      /* 灵感碎片为空有两种情形：一条都没有，或全都已归类 */
+      if (DB.list('frag').length) m = ['这里已经清空了', '所有灵感都已归入主题。新的念头随时写下来。'];
+      btn = btnNew('composeNow', '记下第一条灵感');
+    }
+
     return '<div class="empty"><div class="empty-mark"></div>' +
       '<p class="empty-title">' + esc(m[0]) + '</p><p class="empty-sub">' + esc(m[1]) + '</p>' + btn + '</div>';
   }
@@ -3631,7 +3793,7 @@ select {
                 '<button class="btn btn-sm btn-ghost" data-act="accept" data-id="' + s.frag.id + '" data-topic="' + s.rec.topicId + '">归入 ' + esc(s.rec.name) + '</button>' +
               '</span></div>';
           }).join('') +
-          (loose.length > sugs.length ? '<div class="frag-links-title" style="margin-top:8px">还有 ' + (loose.length - sugs.length) + ' 条信号不足，保留在收件箱</div>' : '') +
+          (loose.length > sugs.length ? '<div class="frag-links-title" style="margin-top:8px">还有 ' + (loose.length - sugs.length) + ' 条信号不足，留在灵感碎片里</div>' : '') +
         '</div>';
       }
     }
@@ -3730,10 +3892,10 @@ select {
      =========================================================== */
   function renderPrimaryHead() {
     var titles = {
-      inbox: ['收件箱', '未归类的灵感会留在这里，随时可以聚合'],
-      topics: ['主题', '点右侧任一主题，打开它的整理台'],
+      inbox: ['灵感碎片', '未归类的心得会留在这里，可以聚合成卡片，也可以直接写成文章'],
+      topics: ['主题', '选一个主题，打开它的整理台'],
       cards: ['知识卡片', '可以直接记录，也可以从灵感聚合'],
-      articles: ['文章', '点击卡片继续写作']
+      articles: ['文章', '写一篇新的，或点开继续打磨']
     };
     if (S.view === 'cards' || S.view === 'articles') {
       // 卡片与文章在主区用列表呈现
@@ -3755,6 +3917,46 @@ select {
     var t2 = titles[S.view] || titles.inbox;
     $('#primaryTitle').textContent = t2[0];
     $('#primarySub').textContent = t2[1];
+  }
+
+  /* ---------- 主区动作区 ----------
+     本视图能做的创建动作，全都摆在标题右边。
+     手机上右侧面板是抽屉，「新建主题 / 新建文章」若只挂在那边就等于没有 ——
+     这正是「手机端看不到创建入口」的根因。 */
+  function paneListLabel() {
+    if (S.view === 'cards') return '卡片列表';
+    if (S.view === 'articles') return '文章列表';
+    return '主题列表';
+  }
+
+  var ICON_PLUS = '<svg class="ico" viewBox="0 0 16 16" aria-hidden="true">' +
+    '<path d="M8 3.2 V12.8 M3.2 8 H12.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
+  var ICON_LIST = '<svg class="ico" viewBox="0 0 16 16" aria-hidden="true">' +
+    '<path d="M2.6 4 H13.4 M2.6 8 H13.4 M2.6 12 H13.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>';
+
+  function renderPrimaryActions() {
+    var host = $('#primaryActions');
+    if (!host) return;
+    var acts = [];
+    if (S.view === 'inbox') {
+      acts.push({ act: 'newArticle', label: '新建文章', icon: ICON_PLUS, tip: '从零起一篇，素材稍后从灵感里挑' });
+      acts.push({ act: 'newTopic', label: '新建主题', icon: ICON_PLUS });
+    } else if (S.view === 'topics') {
+      acts.push({ act: 'newTopic', label: '新建主题', icon: ICON_PLUS });
+    } else if (S.view === 'cards') {
+      acts.push({ act: 'newCard', label: '新建卡片', icon: ICON_PLUS });
+    } else {
+      acts.push({ act: 'newArticle', label: '新建文章', icon: ICON_PLUS });
+    }
+    /* 列表入口只在窄屏有意义：宽屏右侧面板本来就在旁边 */
+    acts.push({ act: 'paneToggle', label: paneListLabel(), icon: ICON_LIST, narrow: true, tip: '打开右侧列表（手机）' });
+
+    host.innerHTML = acts.map(function (a) {
+      return '<button class="btn btn-ghost' + (a.narrow ? ' act-narrow' : '') + '" type="button" data-act="' + a.act + '"' +
+        (a.tip ? ' title="' + esc(a.tip) + '"' : '') + '>' + a.icon +
+        '<span>' + esc(a.label) + '</span></button>';
+    }).join('');
+    syncDrawerToggle();
   }
 
   /* ===========================================================
@@ -3960,7 +4162,12 @@ select {
       arts = arts.filter(function (a) { return (a.title + ' ' + a.body).toLowerCase().indexOf(q) >= 0; });
     }
     if (!arts.length) { $('#primaryList').innerHTML = emptyHTML(); return; }
-    $('#primaryList').innerHTML = arts.map(function (a) {
+    /* 卡片主区一直有新建入口、文章主区却没有，手机上尤其刺眼。补齐。 */
+    var bar = '<div class="wb-bar">' +
+      '<button class="btn btn-ghost" type="button" data-act="newArticle">' + ICON_PLUS + '新建文章</button>' +
+      '<span class="wb-count">' + (S.query ? arts.length + ' 条匹配' : '共 ' + arts.length + ' 篇文章') + '</span>' +
+      '</div>';
+    $('#primaryList').innerHTML = bar + arts.map(function (a) {
       var t = topicById(a.topicId);
       var body = (a.body || '').replace(/^#+\s*/gm, '');
       return '<div class="card-item" data-act="openArticle" data-id="' + a.id + '">' +
@@ -3984,6 +4191,7 @@ select {
   function render() {
     renderCounts();
     renderPrimaryHead();
+    renderPrimaryActions();
     if (S.view === 'cards') renderCardsPrimary();
     else if (S.view === 'articles') renderArticlesPrimary();
     else if (S.view === 'topics' && S.activeTopicId) renderTopicWorkbench();
@@ -4097,7 +4305,7 @@ select {
       S.composeSuggested = '';
       $('#composeHint').textContent = p.isCard
         ? '写点什么，就会推荐归属主题'
-        : '先留在收件箱；需要归入主题时点下面的标签';
+        : '先留在灵感碎片里；需要归入主题时点下面的标签';
       $('#similarPanel').hidden = true;
       return;
     }
@@ -4117,10 +4325,10 @@ select {
         $('#composeHint').innerHTML = '建议归入 <b style="font-weight:500;color:var(--accent-deep)">' + esc(top.name) + '</b>（' + conf + '%）' +
           '<button class="btn btn-sm btn-ghost" data-act="applySuggest" type="button" style="margin-left:6px">采纳</button>' +
           (others.length ? '<span style="color:var(--ink-4)"> · 也可能属于 ' + esc(others.map(function (o) { return o.name; }).join('、')) + '</span>' : '') +
-          '<span style="color:var(--ink-4)"> · 不点就留在收件箱</span>';
+          '<span style="color:var(--ink-4)"> · 不点就留在灵感碎片</span>';
       }
     } else {
-      $('#composeHint').textContent = '信号不足，先留在收件箱；需要时点下面的标签归入主题';
+      $('#composeHint').textContent = '信号不足，先留在灵感碎片；需要时点下面的标签归入主题';
       S.composeSuggested = '';
     }
     renderComposeTopics();
@@ -4213,9 +4421,9 @@ select {
         : '已归入 ' + topicIds.length + ' 个主题', 'good');
     } else if (S.composeSuggested) {
       var st = topicById(S.composeSuggested);
-      toast('已存入收件箱' + (st ? ' · 已建议归入「' + st.name + '」' : ''), 'good');
+      toast('已存入灵感碎片' + (st ? ' · 已建议归入「' + st.name + '」' : ''), 'good');
     } else {
-      toast('已存入收件箱', 'good');
+      toast('已存入灵感碎片', 'good');
     }
   }
 
@@ -4232,6 +4440,11 @@ select {
     $('#editDelete').hidden = !id;
     $('#editMask').hidden = false;
     if (kind === 'card') { renderEditSources(id); renderRelated(id); }
+    if (kind === 'topic') {
+      /* 把当前颜色落到 _editHue：否则「上次给别人挑的颜色」会跟着带到这次保存上 */
+      var cur = DB.get('topic', id);
+      S._editHue = cur ? cur.hue : '';
+    }
     if (kind === 'article') {
       renderEditSources(id); renderRelated(id);
       S._pickTopicId = '';
@@ -4332,7 +4545,9 @@ select {
         '<span class="field-note" id="ed_kw_note"></span></div>' +
         '<div class="field"><label>颜色</label><div class="topic-pick" id="ed_hue">' +
           ['#C0824E', '#7E9179', '#B8735C', '#B08A3C', '#8C7BA6', '#6E8CA0'].map(function (h) {
-            return '<button class="chip" type="button" data-act="edHue" data-hue="' + h + '" style="padding:3px 9px">' +
+            // 标出当前颜色：否则新建主题时根本看不出会拿到哪个色
+            var on = String(it.hue || '') === h;
+            return '<button class="chip' + (on ? ' is-on' : '') + '" type="button" data-act="edHue" data-hue="' + h + '" style="padding:3px 9px">' +
               '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:' + h + '"></span></button>';
           }).join('') + '</div></div>';
     }
@@ -4510,19 +4725,47 @@ select {
      =========================================================== */
   var HUES = ['#C0824E', '#7E9179', '#B8735C', '#B08A3C', '#8C7BA6', '#6E8CA0'];
 
-  function createTopic() {
-    var name = prompt('主题名称：', '');
-    if (!name) return;
-    name = name.trim();
-    if (!name) return;
-    var exists = DB.load().topics.some(function (t) { return t.name === name; });
-    if (exists) { toast('同名主题已存在', 'warn'); return; }
+  /* 新建主题也不再弹 prompt：手机上 prompt 既难看，又填不进关键词和颜色。
+     after 是可选回调（在记录面板里就地建主题时，要把新主题顺手勾上）。 */
+  function createTopic(after) {
+    S._topicAfter = typeof after === 'function' ? after : null;
+    var n = DB.load().topics.length;
+    S._topicDraft = { name: '', desc: '', keywords: [], hue: HUES[n % HUES.length] };
+    S._editHue = S._topicDraft.hue;
+    S.editing = { kind: 'topic', id: null, draft: S._topicDraft };
+
+    $('#editLabel').textContent = '新建主题';
+    $('#editBody').innerHTML = buildEditForm('topic', null, S._topicDraft);
+    $('#editDelete').hidden = true;
+    $('#editHint').textContent = '关键词用于自动归类，留空也行';
+    $('#editMask').hidden = false;
+    var el = $('#ed_name');
+    if (el && typeof el.focus === 'function') el.focus();
+    return null;
+  }
+
+  function saveNewTopic() {
+    var d = S._topicDraft;
+    if (!d) return;
+    var name = $('#ed_name').value.trim();
+    if (!name) { toast('名称不能为空', 'warn'); return; }
+    if (DB.load().topics.some(function (t) { return t.name === name; })) {
+      toast('同名主题已存在', 'warn'); return;
+    }
+    var kws = ($('#ed_kw').value || '').split(/[,，、\s]+/).filter(Boolean);
     var t = DB.add('topic', {
-      name: name, desc: '', keywords: Engine.keywords(name, 4),
-      hue: HUES[DB.load().topics.length % HUES.length]
+      name: name,
+      desc: $('#ed_desc').value.trim(),
+      keywords: kws.length ? kws : Engine.keywords(name, 4),
+      hue: S._editHue || d.hue
     });
+    var after = S._topicAfter;
+    S._topicAfter = null;
+    S._topicDraft = null;
+    closeSheet('#editMask');
     render();
     toast('主题「' + t.name + '」已创建', 'good');
+    if (after) after(t);
     return t;
   }
 
@@ -4905,6 +5148,7 @@ select {
         if (S.view !== 'topics') S.activeTopicId = '';
         if (S.view !== 'cards') S.activeCardId = '';
         if (S.view !== 'articles') S.activeArticleId = '';
+        closeDrawer();   // 换视图后还盖着抽屉，等于换了也看不见
         syncTabs(); render();
         return;
       }
@@ -4924,6 +5168,24 @@ select {
       render();
       toast(S.showRel ? '关联提示已开启' : '关联提示已关闭');
     });
+
+    /* 主区动作区：本视图的创建入口。
+       手机上这里是「新建主题 / 新建文章」唯一的落点，不能缺。 */
+    $('#primaryActions').addEventListener('click', function (e) {
+      var el = e.target.closest('[data-act]');
+      if (!el) return;
+      var act = el.getAttribute('data-act');
+      if (act === 'newCard') { openCompose('card'); return; }
+      if (act === 'newArticle') { newArticle(); return; }
+      if (act === 'newTopic') { createTopic(); return; }
+      if (act === 'paneToggle') {
+        if (drawerOpen()) closeDrawer(); else openDrawer();
+        return;
+      }
+    });
+
+    // 抽屉自带关闭按钮 —— 只开不关会把界面锁死
+    $('#secondaryClose').addEventListener('click', function () { closeDrawer(); });
 
     // 搜索
     var st_;
@@ -4948,6 +5210,7 @@ select {
       if (e.key === 'Escape') {
         $$('.sheet-mask').forEach(function (m) { if (!m.hidden) m.hidden = true; });
         $('#graphLayer').hidden = true;
+        closeDrawer();
         S.editing = null;
       }
     });
@@ -4980,6 +5243,10 @@ select {
         }
         if (act === 'composeNow') { openCompose(); return; }
         if (act === 'newCard') { openCompose('card'); return; }
+        if (act === 'newArticle') { newArticle(); return; }
+        if (act === 'newTopic') { createTopic(); return; }
+        /* 灵感直接成文：不必先聚合卡片 */
+        if (act === 'articleFromFrag') { articleFromFrag(id); return; }
         if (act === 'openCard') { openEdit('card', id); return; }
         if (act === 'openArticle') { openEdit('article', id); return; }
         // 主题工作台
@@ -5031,8 +5298,10 @@ select {
       if (act === 'pickTopic') {
         S.view = 'topics';
         S.activeTopicId = S.activeTopicId === id ? '' : id;
+        /* 手机上选完主题就把抽屉收起来，直接看整理台。
+           （原来的写法是「只加不减」，界面会被抽屉永久盖住。） */
+        closeDrawer();
         syncTabs(); render();
-        if (window.innerWidth <= 980) $('#app').classList.add('show-secondary');
         return;
       }
       if (act === 'pickCard') { S.activeCardId = id; render(); openEdit('card', id); return; }
@@ -5081,7 +5350,15 @@ select {
         renderComposeTopics(); runComposeAnalysis();
         return;
       }
-      if (act === 'newTopicInline') { var t = createTopic(); if (t) { S.composeTopics.push(t.id); renderComposeTopics(); } return; }
+      if (act === 'newTopicInline') {
+        // 就地建主题：建完自动勾上，人不用再找一遍
+        createTopic(function (t) {
+          if (S.composeTopics.indexOf(t.id) < 0) S.composeTopics.push(t.id);
+          renderComposeTopics();
+          runComposeAnalysis();
+        });
+        return;
+      }
       if (act === 'applySuggest') {
         if (S.composeSuggested && S.composeTopics.indexOf(S.composeSuggested) < 0) {
           S.composeTopics.push(S.composeSuggested);
@@ -5177,7 +5454,12 @@ select {
           }).join('') + '</div>';
         return;
       }
-      if (act === 'edHue') { S._editHue = el.getAttribute('data-hue'); toast('颜色已更新，保存后生效'); return; }
+      if (act === 'edHue') {
+        S._editHue = el.getAttribute('data-hue');
+        $$('#ed_hue .chip').forEach(function (c) { c.classList.toggle('is-on', c === el); });
+        toast('颜色已更新，保存后生效');
+        return;
+      }
       if (act === 'unlink') {
         var sid = el.getAttribute('data-sid');
         var it = DB.get(S.editing.kind, S.editing.id);
@@ -5259,8 +5541,10 @@ select {
     });
 
     $('#editSave').addEventListener('click', function () {
-      if (S.editing && S.editing.draft) saveNewCard();
-      else saveEdit();
+      if (S.editing && S.editing.draft) {
+        if (S.editing.kind === 'topic') saveNewTopic();
+        else saveNewCard();
+      } else saveEdit();
     });
     $('#editDelete').addEventListener('click', function () {
       if (!S.editing || !S.editing.id) return;
@@ -5306,7 +5590,11 @@ select {
       mask.addEventListener('click', function (e) {
         if (e.target === mask || e.target.closest('[data-close]')) {
           mask.hidden = true;
-          if (mask.id === 'editMask') S.editing = null;
+          if (mask.id === 'editMask') {
+            // 取消新建主题时，把那笔「建成后要做的补充动作」一并作废
+            if (S.editing && S.editing.kind === 'topic') S._topicAfter = null;
+            S.editing = null;
+          }
         }
       });
     });
@@ -5343,15 +5631,51 @@ select {
     toast('已新建文章 · 可从「' + topic.name + '」取材', 'good');
   }
 
+  /* 灵感 → 文章：不经过卡片也能成篇。
+     正文先把原文带上 —— 在已有的句子上改，比对着空白回想容易得多。
+     「## 」这段空小标题是刻意留的，接着往下写就行。 */
+  function articleDraftFrom(frags) {
+    return frags.map(function (f) { return f.text; }).join('\n\n') + '\n\n## \n\n';
+  }
+
+  function articleFromFrag(id) {
+    var f = DB.get('frag', id);
+    if (!f) return;
+    var topicId = (f.topicIds || [])[0] || S.activeTopicId || '';
+    var a = DB.add('article', {
+      title: firstLine(f.text, 20),
+      body: articleDraftFrom([f]),
+      topicId: topicId,
+      sourceIds: [f.id],
+      tags: (f.tags || []).slice()
+    });
+    openArticleEditor(a, '已从这条灵感起稿 · 正文带上了原文');
+  }
+
+  /* 新建文章不再用 prompt：部分内嵌浏览器（微信等）会屏蔽或弹得很别扭，
+     手机上尤其难用。空稿直接落库，标题框就在眼前，想改随手改。 */
   function newArticle() {
-    var title = prompt('文章标题：', '');
-    if (!title) return;
-    title = title.trim();
-    if (!title) return;
-    var a = DB.add('article', { title: title, body: '从这里开始写。\n\n## 第一节\n\n', topicId: S.activeTopicId || '', sourceIds: [], tags: [] });
-    S.view = 'articles'; S.activeArticleId = a.id;
-    syncTabs(); render();
+    var a = DB.add('article', {
+      title: '未命名文章',
+      body: '从这里开始写。\n\n## 第一节\n\n',
+      topicId: S.activeTopicId || '',
+      sourceIds: [],
+      tags: []
+    });
+    openArticleEditor(a, '文章已建好 · 标题可以直接改');
+  }
+
+  function openArticleEditor(a, msg) {
+    S.view = 'articles';
+    S.activeArticleId = a.id;
+    closeDrawer();
+    syncTabs();
+    render();
     openEdit('article', a.id);
+    var t = $('#ed_title');
+    if (t && typeof t.focus === 'function') t.focus();
+    if (t && typeof t.select === 'function') t.select();
+    if (msg) toast(msg, 'good');
   }
 
   /* ===========================================================
